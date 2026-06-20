@@ -8,7 +8,7 @@ import capability as cap
 import control_chart as cc
 import rules
 
-st.set_page_config(page_title="통계적 공정관리", layout="wide")
+st.set_page_config(page_title="공정능력분석 · SPC", layout="wide")
 
 
 def fmt(x, n=4):
@@ -16,26 +16,63 @@ def fmt(x, n=4):
 
 
 def status_banner(status, title, sub=""):
-    sub_html = f"<div style='font-size:13px;color:{config.COLOR_TEXT_MUTED};margin-top:4px'>{sub}</div>" if sub else ""
+    sub_html = f"<div style='font-size:13px;color:{config.COLOR_TEXT_MUTED};margin-top:3px'>{sub}</div>" if sub else ""
     st.markdown(
-        f"""<div style="background:{status['bg']};border-radius:12px;padding:16px 18px;margin-bottom:16px">
-        <span style="font-size:16px;font-weight:500;color:{status['fg']}">{status['icon']} {title}</span>
+        f"""<div style="background:{status['bg']};border-left:3px solid {status['fg']};
+        border-radius:0 10px 10px 0;padding:13px 16px;margin-bottom:18px">
+        <span style="font-size:15px;font-weight:500;color:{status['fg']}">{status['icon']} {title}</span>
         {sub_html}</div>""",
         unsafe_allow_html=True,
     )
 
 
-def summary_strip(items):
+def summary_strip(items, highlight_last=False):
     cols = st.columns(len(items))
-    for col, (label, value) in zip(cols, items):
+    for idx, (col, (label, value)) in enumerate(zip(cols, items)):
+        is_hi = highlight_last and idx == len(items) - 1
+        bg = config.COLOR_PRIMARY if is_hi else config.COLOR_BG_CARD
+        border = "none" if is_hi else f"0.5px solid {config.COLOR_BORDER}"
+        label_color = "#B5D4F4" if is_hi else config.COLOR_TEXT_MUTED
+        value_color = "#FFFFFF" if is_hi else config.COLOR_TEXT
         col.markdown(
-            f"""<div style="background:{config.COLOR_BG_CARD};border:1px solid {config.COLOR_BORDER};
-            border-radius:10px;padding:12px 16px">
-            <div style="font-size:12px;color:{config.COLOR_TEXT_MUTED}">{label}</div>
-            <div style="font-size:15px;font-weight:500;color:{config.COLOR_TEXT};margin-top:2px">{value}</div>
+            f"""<div style="background:{bg};border:{border};border-radius:10px;padding:11px 14px">
+            <div style="font-size:11px;color:{label_color}">{label}</div>
+            <div style="font-size:13px;font-weight:500;color:{value_color};margin-top:2px">{value}</div>
             </div>""",
             unsafe_allow_html=True,
         )
+
+
+def kpi_card(col, label, value, value_color=None, note="", note_color=None):
+    vc = value_color or config.COLOR_TEXT
+    note_html = f"<div style='font-size:10px;color:{note_color or config.COLOR_TEXT_MUTED};margin-top:1px'>{note}</div>" if note else ""
+    col.markdown(
+        f"""<div style="background:{config.COLOR_BG_PAGE};border-radius:10px;padding:13px 14px">
+        <div style="font-size:12px;color:{config.COLOR_TEXT_MUTED}">{label}</div>
+        <div style="font-size:25px;font-weight:500;color:{vc};margin-top:2px">{value}</div>
+        {note_html}</div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def metric_line(col, label, value, accent=None, value_color=None):
+    border = accent or config.COLOR_BORDER
+    vc = value_color or config.COLOR_TEXT
+    col.markdown(
+        f"""<div style="padding:10px 14px;border-left:2px solid {border}">
+        <div style="font-size:12px;color:{config.COLOR_TEXT_MUTED}">{label}</div>
+        <div style="font-size:18px;font-weight:500;color:{vc}">{value}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def index_color(value, good=1.33, warn=1.00):
+    if value >= good:
+        return "#1E7544"
+    elif value >= warn:
+        return "#9A6510"
+    return "#A32D2D"
 
 
 # ──────────────────────────────────────────────
@@ -119,28 +156,38 @@ if is_variable:
             ("부분군 / 표본", f"{data[sg_col].nunique()} / {len(data)}"),
             ("목표 ± 허용오차", f"{fmt(target,2)} ± {fmt(tol,2)}"),
             ("규격 (LSL / USL)", f"{fmt(LSL,2)} / {fmt(USL,2)}"),
-        ])
+        ], highlight_last=True)
         st.write("")
 
         status_banner(k["status"], f"{k['status']['label']} — 공정 {k['grade']}등급: {k['verdict']}", k["action"])
 
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Cp", fmt(k["Cp"], 3))
-        c2.metric("Cpk", fmt(k["Cpk"], 3))
-        c3.metric("Pp", fmt(k["Pp"], 3))
-        c4.metric("Ppk", fmt(k["Ppk"], 3))
-        c5.metric("예상 불량률", f"{k['ppm']:.0f} ppm")
+        kpi_card(c1, "Cp", fmt(k["Cp"], 3), config.COLOR_PRIMARY)
+        cpk_color = index_color(k["Cpk"])
+        kpi_card(c2, "Cpk", fmt(k["Cpk"], 3), cpk_color,
+                 note=("▲ 양호" if k["Cpk"] >= 1.33 else ("▼ 주의" if k["Cpk"] >= 1.0 else "▼ 위험")),
+                 note_color=cpk_color)
+        kpi_card(c3, "Pp", fmt(k["Pp"], 3), config.COLOR_PRIMARY)
+        ppk_color = index_color(k["Ppk"])
+        kpi_card(c4, "Ppk", fmt(k["Ppk"], 3), ppk_color,
+                 note=("▲ 양호" if k["Ppk"] >= 1.33 else ("▼ 주의" if k["Ppk"] >= 1.0 else "▼ 위험")),
+                 note_color=ppk_color)
+        kpi_card(c5, "예상 불량률", f"{k['ppm']:.0f} <span style='font-size:12px;color:{config.COLOR_TEXT_MUTED}'>ppm</span>")
 
+        st.write("")
         ooc = rules.ooc_subgroups(cc.generate_value_chart(data, chart_type=chart_type, window=window)[0])
         m1, m2, m3 = st.columns(3)
-        m1.metric("공정 평균", fmt(k["x_bar"], 3))
-        m2.metric("전체 표준편차", fmt(k["sigma_overall"], 3))
-        m3.metric("관리이탈 부분군", f"{len(ooc)}")
+        metric_line(m1, "공정 평균", fmt(k["x_bar"], 3))
+        metric_line(m2, "전체 표준편차", fmt(k["sigma_overall"], 3))
+        ooc_accent = "#E24B4A" if len(ooc) > 0 else config.COLOR_BORDER
+        ooc_vcolor = "#A32D2D" if len(ooc) > 0 else config.COLOR_TEXT
+        metric_line(m3, "관리이탈 부분군", f"{len(ooc)}", accent=ooc_accent, value_color=ooc_vcolor)
 
     # ── 공정능력분석 ──
     with tab_c:
         st.subheader("공정능력 히스토그램")
-        st.plotly_chart(cap.plot_process_capability(data, LSL, USL), use_container_width=True)
+        st.plotly_chart(cap.plot_process_capability(data, LSL, USL),
+                        use_container_width=True, key="cap_hist")
 
         is_normal, p = cap.normality_test(data)
         col_a, col_b = st.columns(2)
@@ -152,7 +199,7 @@ if is_variable:
                 st.warning(f"정규성 불만족 (p = {fmt(p)} < 0.05) — Box-Cox / Johnson 변환 후 재계산 권장")
         with col_b:
             st.subheader("Q–Q plot")
-            st.plotly_chart(cap.plot_qq(data), use_container_width=True)
+            st.plotly_chart(cap.plot_qq(data), use_container_width=True, key="cap_qq")
 
     # ── 통계적공정관리 ──
     with tab_s:
@@ -222,7 +269,7 @@ else:
             ("로트 수", f"{df_count[sg_col].nunique()}"),
             ("평균 표본크기", f"{df_count[size_col].mean():.0f}"),
             ("관리도", f"{chart_type}"),
-        ])
+        ], highlight_last=True)
         st.write("")
 
         if len(ooc) > 0:
@@ -231,13 +278,16 @@ else:
             status_banner(config.STATUS_GOOD, "관리상태 — 모든 로트가 관리한계 내")
 
         m1, m2 = st.columns(2)
-        m1.metric("총 로트 수", f"{df_count[sg_col].nunique()}")
-        m2.metric("관리이탈 로트", f"{len(ooc)}")
+        metric_line(m1, "총 로트 수", f"{df_count[sg_col].nunique()}")
+        ooc_accent = "#E24B4A" if len(ooc) > 0 else config.COLOR_BORDER
+        ooc_vcolor = "#A32D2D" if len(ooc) > 0 else config.COLOR_TEXT
+        metric_line(m2, "관리이탈 로트", f"{len(ooc)}", accent=ooc_accent, value_color=ooc_vcolor)
 
     # ── 통계적공정관리 ──
     with tab_s:
         st.subheader(f"{chart_type} 관리도")
-        st.plotly_chart(cc.plot_variable_control_chart(charts, chart_type, var_col), use_container_width=True)
+        st.plotly_chart(cc.plot_variable_control_chart(charts, chart_type, var_col),
+                        use_container_width=True, key="count_spc")
         if len(ooc) > 0:
             st.warning(f"관리한계 이탈 로트: {ooc}")
         else:
@@ -251,3 +301,4 @@ else:
                            "defects.csv", "text/csv")
 
 st.sidebar.markdown("---")
+st.sidebar.caption("스마트제조 · 공정능력분석 + SPC")
