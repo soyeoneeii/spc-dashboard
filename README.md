@@ -59,7 +59,7 @@ spc-app/
 공정능력분석은 계량형에만 적용된다(계수형은 규격·정규분포 가정이 성립하지 않음).
 
 ## 배포
-
+https://spc-dashboard-fpyg6ljm7uyfxgte4ksbyy.streamlit.app/
 
 ## 데이터
 
